@@ -522,7 +522,7 @@ static int airoha_xpon_epon_start_mac(struct airoha_xpon *xpon)
 	airoha_pon_phy_update_bits(xpon, AIROHA_XEPON_PHY_CSR_DUMMY_RX,
 	                           AIROHA_XEPON_PHY_CONTINUOUS_TX, 0);
 
-	/* Enable all eight REPORT queue bitmap bits. */
+	/* 10G EPON reports across 16 queue bits with report configuration 1. */
 	airoha_epon_write(xpon, AIROHA_EPON_REPORT_BITMAP, 0xffff);
 	if (!airoha_xpon_epon_is_1g(xpon))
 		airoha_epon_write(xpon, AIROHA_EPON_REPORT_CFG, 1);
