@@ -120,6 +120,25 @@ class RecoveryTests(unittest.TestCase):
                       'a coalesced OLT Register message must be handled before another Register Request')
 
 
+    def test_registered_timeout_streak_survives_mpcp_epoch_reset(self):
+        source = (SOURCE / EPON).read_text()
+        start = source.index('irqreturn_t airoha_xpon_epon_irq(struct airoha_xpon *xpon)')
+        end = source.index('irqreturn_t airoha_xpon_epon_phy_irq', start)
+        body = source[start:end]
+        reset = body.index('airoha_xpon_epon_reset_registration(xpon);')
+        capture = body.index('registered_timeout_streak =')
+        restore = body.index('xpon->epon.registered_timeout_streak =', reset)
+        self.assertLess(capture, reset,
+                        'capture registered timeout history before epoch reset')
+        self.assertGreater(restore, reset,
+                           'restore registered timeout history after epoch reset')
+        self.assertIn('preserve_timeout_streak = true;', body[:reset],
+                      'only registered-state timeouts preserve the streak')
+        self.assertIn('xpon->epon.registered_timeout_streak = 0;', body,
+                      'discovery timeouts must still clear registered history')
+        self.assertIn('AIROHA_EPON_TX_WEDGE_TIMEOUTS', body)
+
+
     def test_an7581_epon_1g_keeps_default_report_configuration(self):
         source = (SOURCE / EPON).read_text()
         start = source.index('static int airoha_xpon_epon_start_mac(struct airoha_xpon *xpon)')
