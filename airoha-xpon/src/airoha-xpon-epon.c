@@ -395,7 +395,7 @@ static int airoha_xpon_epon_program_mac(struct airoha_xpon *xpon)
 	return airoha_xpon_epon_wait_mac_table(xpon);
 }
 
-static void airoha_xpon_epon_reset_registration(struct airoha_xpon *xpon)
+void airoha_xpon_epon_reset_registration(struct airoha_xpon *xpon)
 {
 	if (xpon->epon.registered_since) {
 		xpon->epon.last_registration_lifetime =
