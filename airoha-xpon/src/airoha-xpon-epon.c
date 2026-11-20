@@ -925,6 +925,8 @@ irqreturn_t airoha_xpon_epon_irq_fast(struct airoha_xpon *xpon)
 irqreturn_t airoha_xpon_epon_irq(struct airoha_xpon *xpon)
 {
 	u32 events = atomic_xchg(&xpon->epon.pending_events, 0);
+	bool recover_tx = false;
+	unsigned int tx_rearm_count = 0;
 	u32 error_events = atomic_xchg(&xpon->epon.pending_error_events, 0);
 
 	if (!events && !error_events)
@@ -983,8 +985,7 @@ irqreturn_t airoha_xpon_epon_irq(struct airoha_xpon *xpon)
 			xpon->epon.registered_timeout_streak++;
 			if (xpon->epon.registered_timeout_streak >=
 			    AIROHA_EPON_TX_WEDGE_TIMEOUTS) {
-				xpon->epon.frontend_reset_pending = true;
-				mod_delayed_work(system_wq, &xpon->link_work, 0);
+				recover_tx = true;
 			}
 		} else {
 			xpon->epon.registered_timeout_streak = 0;
@@ -1007,8 +1008,7 @@ irqreturn_t airoha_xpon_epon_irq(struct airoha_xpon *xpon)
 				dev_warn(xpon->dev,
 				         "EPON discovery wedged: %u unanswered Register Requests, no MPCP message from the OLT; re-arming the burst path\n",
 				         silent);
-				xpon->epon.frontend_reset_pending = true;
-				mod_delayed_work(system_wq, &xpon->link_work, 0);
+				recover_tx = true;
 			}
 		}
 		dev_warn_ratelimited(
@@ -1016,7 +1016,16 @@ irqreturn_t airoha_xpon_epon_irq(struct airoha_xpon *xpon)
 			"EPON MPCP timeout: state=%u llid_valid=%u\n",
 			xpon->epon.mpcp_state, xpon->epon.llid_valid);
 		airoha_xpon_epon_send_deregister(xpon);
+		tx_rearm_count = xpon->epon.tx_rearm_count;
 		airoha_xpon_epon_reset_registration(xpon);
+		if (recover_tx) {
+			/* A timeout starts a new MPCP epoch but must retain the TX
+			 * recovery ladder until the burst path has been repaired.
+			 */
+			xpon->epon.tx_rearm_count = tx_rearm_count;
+			xpon->epon.frontend_reset_pending = true;
+			mod_delayed_work(system_wq, &xpon->link_work, 0);
+		}
 	}
 out_unlock:
 	mutex_unlock(&xpon->state_lock);
