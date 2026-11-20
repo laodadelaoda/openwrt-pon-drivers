@@ -91,7 +91,15 @@ class RecoveryTests(unittest.TestCase):
         body = source[start:end]
         self.assertEqual(body.count('recover_tx = true;'), 2,
                          'registered and silent-discovery timeout paths must request recovery')
+        capture = body.index('tx_rearm_count = xpon->epon.tx_rearm_count;')
         reset = body.index('airoha_xpon_epon_reset_registration(xpon);')
+        self.assertLess(capture, reset,
+                        'save the recovery stage before registration reset clears it')
+        reset_start = source.index('void airoha_xpon_epon_reset_registration(struct airoha_xpon *xpon)')
+        reset_end = source.index('\\n}', reset_start) + 2
+        reset_body = source[reset_start:reset_end]
+        self.assertIn('xpon->epon.tx_rearm_count = 0;', reset_body)
+        self.assertIn('xpon->epon.frontend_reset_pending = false;', reset_body)
         restore = body.index('if (recover_tx) {', reset)
         self.assertLess(reset, restore,
                         'recovery request must be restored after epoch reset')
