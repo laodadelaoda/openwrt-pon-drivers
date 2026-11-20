@@ -933,6 +933,8 @@ irqreturn_t airoha_xpon_epon_irq(struct airoha_xpon *xpon)
 {
 	u32 events = atomic_xchg(&xpon->epon.pending_events, 0);
 	bool recover_tx = false;
+	bool preserve_timeout_streak = false;
+	unsigned int registered_timeout_streak = 0;
 	unsigned int tx_rearm_count = 0;
 	u32 error_events = atomic_xchg(&xpon->epon.pending_error_events, 0);
 
@@ -990,6 +992,9 @@ irqreturn_t airoha_xpon_epon_irq(struct airoha_xpon *xpon)
 				xpon->epon.tx_rearm_count = 0;
 			}
 			xpon->epon.registered_timeout_streak++;
+			registered_timeout_streak =
+				xpon->epon.registered_timeout_streak;
+			preserve_timeout_streak = true;
 			if (xpon->epon.registered_timeout_streak >=
 			    AIROHA_EPON_TX_WEDGE_TIMEOUTS) {
 				recover_tx = true;
@@ -1025,6 +1030,10 @@ irqreturn_t airoha_xpon_epon_irq(struct airoha_xpon *xpon)
 		airoha_xpon_epon_send_deregister(xpon);
 		tx_rearm_count = xpon->epon.tx_rearm_count;
 		airoha_xpon_epon_reset_registration(xpon);
+		/* Carry rapid registered-timeout history across this reset epoch. */
+		if (preserve_timeout_streak)
+			xpon->epon.registered_timeout_streak =
+				registered_timeout_streak;
 		if (recover_tx) {
 			/* A timeout starts a new MPCP epoch but must retain the TX
 			 * recovery ladder until the burst path has been repaired.
