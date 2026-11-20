@@ -116,6 +116,8 @@ class RecoveryTests(unittest.TestCase):
         gate = fast_irq[fast_irq.index('if (events & AIROHA_EPON_INT_DISCOVERY_GATE)'):]
         self.assertIn('AIROHA_EPON_MPCP_REGISTER_PENDING', gate,
                       'a new Discovery Gate must not send another Register Request before ACK_DONE')
+        self.assertIn('AIROHA_EPON_INT_LLID0_REGISTER', gate,
+                      'a coalesced OLT Register message must be handled before another Register Request')
 
 
 if __name__ == '__main__':
