@@ -750,7 +750,9 @@ static void airoha_xpon_remove(struct platform_device *pdev)
 	airoha_xpon_debugfs_remove(xpon);
 	airoha_xpon_netlink_unregister(xpon);
 	airoha_eth_pon_unregister_controller(xpon->pon_netdev, xpon);
-	airoha_xpon_controller_stop(xpon);
+	/* unregister_controller() calls dev_close(), which already runs ndo_stop. */
+	if (READ_ONCE(xpon->active_mode_valid))
+		airoha_xpon_controller_stop(xpon);
 }
 
 static const struct of_device_id airoha_xpon_of_match[] = {
