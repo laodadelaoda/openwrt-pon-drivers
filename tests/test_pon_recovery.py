@@ -86,12 +86,9 @@ class RecoveryTests(unittest.TestCase):
 
     def test_mpcp_timeout_preserves_tx_recovery_after_epoch_reset(self):
         source = (SOURCE / EPON).read_text()
-        match = re.search(
-            r'irqreturn_t airoha_xpon_epon_irq\\(struct airoha_xpon \\*xpon\\)\\n'
-            r'\\{(.*?)\\n\\}\\n\\nirqreturn_t airoha_xpon_epon_phy_irq',
-            source, re.S)
-        self.assertIsNotNone(match, 'cannot locate production MPCP threaded IRQ')
-        body = match.group(1)
+        start = source.index('irqreturn_t airoha_xpon_epon_irq(struct airoha_xpon *xpon)')
+        end = source.index('irqreturn_t airoha_xpon_epon_phy_irq', start)
+        body = source[start:end]
         self.assertEqual(body.count('recover_tx = true;'), 2,
                          'registered and silent-discovery timeout paths must request recovery')
         reset = body.index('airoha_xpon_epon_reset_registration(xpon);')
