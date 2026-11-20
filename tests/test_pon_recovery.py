@@ -120,5 +120,17 @@ class RecoveryTests(unittest.TestCase):
                       'a coalesced OLT Register message must be handled before another Register Request')
 
 
+    def test_an7581_epon_1g_keeps_default_report_configuration(self):
+        source = (SOURCE / EPON).read_text()
+        start = source.index('static int airoha_xpon_epon_start_mac(struct airoha_xpon *xpon)')
+        end = source.index('static int airoha_xpon_epon_start_1g_rx', start)
+        body = source[start:end]
+        self.assertIn('airoha_epon_write(xpon, AIROHA_EPON_REPORT_BITMAP, 0xffff);', body)
+        cfg = body.index('airoha_epon_write(xpon, AIROHA_EPON_REPORT_CFG, 1);')
+        guard = body.rfind('if (!airoha_xpon_epon_is_1g(xpon))', 0, cfg)
+        self.assertGreaterEqual(guard, 0,
+                                'AN7581 EPON 1G/1G must retain vendor-default REPORT_CFG')
+
+
 if __name__ == '__main__':
     unittest.main(argv=[sys.argv[0], *REST])
