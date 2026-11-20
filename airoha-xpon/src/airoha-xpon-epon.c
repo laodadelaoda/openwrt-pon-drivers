@@ -418,6 +418,9 @@ void airoha_xpon_epon_reset_registration(struct airoha_xpon *xpon)
 	xpon->epon.tx_rearm_count = 0;
 	xpon->epon.requests_since_message = 0;
 	xpon->epon.frontend_reset_pending = false;
+	xpon->epon.frontend_reset_forced = false;
+	xpon->epon.frontend_reload_forced = false;
+	xpon->epon.frontend_reset_after = 0;
 	xpon->epon.mpcp_state = AIROHA_EPON_MPCP_REGISTERING;
 	xpon->lifecycle = AIROHA_XPON_PROTOCOL_ACTIVATING;
 	if (xpon->mac_initialized) {
