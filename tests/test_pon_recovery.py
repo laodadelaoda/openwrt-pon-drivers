@@ -139,6 +139,19 @@ class RecoveryTests(unittest.TestCase):
         self.assertIn('AIROHA_EPON_TX_WEDGE_TIMEOUTS', body)
 
 
+    def test_epon_stop_does_not_repeat_registration_cleanup(self):
+        source = (SOURCE / MAIN).read_text()
+        start = source.index('static void airoha_xpon_controller_stop(void *priv)')
+        end = source.index('static void\nairoha_xpon_controller_rx_control', start)
+        body = source[start:end]
+        self.assertIn('epon_reset = epon;', body,
+                      'EPON stop_rx() performs registration and bearer cleanup')
+        self.assertIn('if (epon && !epon_reset)', body,
+                      'controller_stop must not clear the LLID/PPE mapping twice')
+        self.assertEqual(body.count('airoha_xpon_epon_reset_registration(xpon);'), 1,
+                         'only the inactive-RX fallback should reset registration here')
+
+
     def test_an7581_epon_1g_keeps_default_report_configuration(self):
         source = (SOURCE / EPON).read_text()
         start = source.index('static int airoha_xpon_epon_start_mac(struct airoha_xpon *xpon)')
