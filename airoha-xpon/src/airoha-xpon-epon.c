@@ -883,7 +883,8 @@ irqreturn_t airoha_xpon_epon_irq_fast(struct airoha_xpon *xpon)
 			          &xpon->epon.pending_events);
 		}
 		if (READ_ONCE(xpon->tx_armed) &&
-		    !(events & AIROHA_EPON_INT_REGISTER_REQ_DONE) &&
+		    !(events & (AIROHA_EPON_INT_REGISTER_REQ_DONE |
+				   AIROHA_EPON_INT_LLID0_REGISTER)) &&
 		    READ_ONCE(xpon->epon.mpcp_state) !=
 		            AIROHA_EPON_MPCP_REGISTERED &&
 		    READ_ONCE(xpon->epon.mpcp_state) !=
