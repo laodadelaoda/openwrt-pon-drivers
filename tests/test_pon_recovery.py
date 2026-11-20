@@ -108,5 +108,15 @@ class RecoveryTests(unittest.TestCase):
         self.assertIn('xpon->epon.frontend_reset_pending = true;', body[restore:])
 
 
+    def test_discovery_gate_waits_for_register_ack_completion(self):
+        source = (SOURCE / EPON).read_text()
+        start = source.index('irqreturn_t airoha_xpon_epon_irq_fast(struct airoha_xpon *xpon)')
+        end = source.index('irqreturn_t airoha_xpon_epon_irq(struct airoha_xpon *xpon)', start)
+        fast_irq = source[start:end]
+        gate = fast_irq[fast_irq.index('if (events & AIROHA_EPON_INT_DISCOVERY_GATE)'):]
+        self.assertIn('AIROHA_EPON_MPCP_REGISTER_PENDING', gate,
+                      'a new Discovery Gate must not send another Register Request before ACK_DONE')
+
+
 if __name__ == '__main__':
     unittest.main(argv=[sys.argv[0], *REST])
