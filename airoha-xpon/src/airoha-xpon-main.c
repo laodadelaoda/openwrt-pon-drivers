@@ -267,6 +267,8 @@ static void airoha_xpon_controller_stop(void *priv)
 		airoha_xpon_deactivate_rx_locked(xpon);
 	else if (!epon && xpon->mac_initialized)
 		airoha_xpon_clear_assignment(xpon);
+	if (epon)
+		airoha_xpon_epon_reset_registration(xpon);
 	/* disarm_upstream() closes the board TX gate before provider teardown. */
 	if (airoha_pon_frontend_unprepare(xpon->frontend))
 		dev_warn_ratelimited(
