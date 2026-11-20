@@ -415,10 +415,12 @@ void airoha_xpon_epon_reset_registration(struct airoha_xpon *xpon)
 	xpon->epon.denied_until = 0;
 	xpon->epon.mpcp_state = AIROHA_EPON_MPCP_REGISTERING;
 	xpon->lifecycle = AIROHA_XPON_PROTOCOL_ACTIVATING;
-	airoha_xpon_epon_set_discovery_state(xpon,
-	                                     AIROHA_EPON_STATE_UNREGISTERED);
-	airoha_xpon_epon_set_discovery_state(xpon,
-	                                     AIROHA_EPON_STATE_REGISTERING);
+	if (xpon->mac_initialized) {
+		airoha_xpon_epon_set_discovery_state(xpon,
+		                                     AIROHA_EPON_STATE_UNREGISTERED);
+		airoha_xpon_epon_set_discovery_state(xpon,
+		                                     AIROHA_EPON_STATE_REGISTERING);
+	}
 	airoha_xpon_leds_update(xpon);
 }
 
