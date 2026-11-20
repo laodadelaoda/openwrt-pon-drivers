@@ -887,6 +887,8 @@ irqreturn_t airoha_xpon_epon_irq_fast(struct airoha_xpon *xpon)
 		    READ_ONCE(xpon->epon.mpcp_state) !=
 		            AIROHA_EPON_MPCP_REGISTERED &&
 		    READ_ONCE(xpon->epon.mpcp_state) !=
+		            AIROHA_EPON_MPCP_REGISTER_PENDING &&
+		    READ_ONCE(xpon->epon.mpcp_state) !=
 		            AIROHA_EPON_MPCP_DENIED) {
 			/*
 			 * Only a line that has already carried a Register Request to
