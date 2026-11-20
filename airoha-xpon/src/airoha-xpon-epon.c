@@ -413,6 +413,11 @@ void airoha_xpon_epon_reset_registration(struct airoha_xpon *xpon)
 	xpon->epon.discovery_retry = 0;
 	xpon->epon.tx_deferrals = 0;
 	xpon->epon.denied_until = 0;
+	/* A new MPCP registration epoch must not inherit the old TX recovery state. */
+	xpon->epon.registered_timeout_streak = 0;
+	xpon->epon.tx_rearm_count = 0;
+	xpon->epon.requests_since_message = 0;
+	xpon->epon.frontend_reset_pending = false;
 	xpon->epon.mpcp_state = AIROHA_EPON_MPCP_REGISTERING;
 	xpon->lifecycle = AIROHA_XPON_PROTOCOL_ACTIVATING;
 	if (xpon->mac_initialized) {
