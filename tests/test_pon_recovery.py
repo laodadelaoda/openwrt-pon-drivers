@@ -96,7 +96,7 @@ class RecoveryTests(unittest.TestCase):
         self.assertLess(capture, reset,
                         'save the recovery stage before registration reset clears it')
         reset_start = source.index('void airoha_xpon_epon_reset_registration(struct airoha_xpon *xpon)')
-        reset_end = source.index('\\n}', reset_start) + 2
+        reset_end = source.index('\n}', reset_start) + 2
         reset_body = source[reset_start:reset_end]
         self.assertIn('xpon->epon.tx_rearm_count = 0;', reset_body)
         self.assertIn('xpon->epon.frontend_reset_pending = false;', reset_body)
