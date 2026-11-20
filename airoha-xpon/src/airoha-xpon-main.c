@@ -231,6 +231,7 @@ static void airoha_xpon_controller_stop(void *priv)
 	struct airoha_xpon *xpon = priv;
 	bool epon = READ_ONCE(xpon->active_mode_valid) &&
 	            airoha_xpon_mode_is_epon(READ_ONCE(xpon->active_mode));
+	bool epon_reset = false;
 
 	/* The stopping gate closes asynchronous entry and upstream bursts. */
 	WRITE_ONCE(xpon->stopping, true);
@@ -263,11 +264,14 @@ static void airoha_xpon_controller_stop(void *priv)
 	mutex_lock(&xpon->state_lock);
 	if (!epon)
 		airoha_xpon_disarm_upstream(xpon, "netdev-stop-final");
-	if (xpon->rx_active)
+	if (xpon->rx_active) {
+		/* EPON stop_rx() already clears the LLID and bearer mapping. */
+		epon_reset = epon;
 		airoha_xpon_deactivate_rx_locked(xpon);
-	else if (!epon && xpon->mac_initialized)
+	} else if (!epon && xpon->mac_initialized) {
 		airoha_xpon_clear_assignment(xpon);
-	if (epon)
+	}
+	if (epon && !epon_reset)
 		airoha_xpon_epon_reset_registration(xpon);
 	/* disarm_upstream() closes the board TX gate before provider teardown. */
 	if (airoha_pon_frontend_unprepare(xpon->frontend))
