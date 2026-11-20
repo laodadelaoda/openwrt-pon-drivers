@@ -139,6 +139,23 @@ class RecoveryTests(unittest.TestCase):
         self.assertIn('AIROHA_EPON_TX_WEDGE_TIMEOUTS', body)
 
 
+
+    def test_mpcp_timeout_is_processed_before_coalesced_completion_events(self):
+        source = (SOURCE / EPON).read_text()
+        start = source.index('irqreturn_t airoha_xpon_epon_irq(struct airoha_xpon *xpon)')
+        end = source.index('irqreturn_t airoha_xpon_epon_phy_irq', start)
+        body = source[start:end]
+        timeout = body.index('if (events & AIROHA_EPON_INT_MPCP_TIMEOUT)')
+        req_done = body.index('if (events & AIROHA_EPON_INT_REGISTER_REQ_DONE)')
+        register = body.index('if (events & AIROHA_EPON_INT_LLID0_REGISTER)')
+        ack_done = body.index('if (events & AIROHA_EPON_INT_REGISTER_ACK_DONE)')
+        self.assertLess(timeout, req_done,
+                        'match AN7581 vendor ISR: timeout state reset precedes TX completion')
+        self.assertLess(req_done, register)
+        self.assertLess(register, ack_done,
+                        'an OLT deregister/NACK must invalidate a pending ACK completion')
+
+
     def test_epon_stop_does_not_repeat_registration_cleanup(self):
         source = (SOURCE / MAIN).read_text()
         start = source.index('static void airoha_xpon_controller_stop(void *priv)')
