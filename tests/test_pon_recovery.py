@@ -126,7 +126,7 @@ class RecoveryTests(unittest.TestCase):
         end = source.index('irqreturn_t airoha_xpon_epon_phy_irq', start)
         body = source[start:end]
         reset = body.index('airoha_xpon_epon_reset_registration(xpon);')
-        capture = body.index('registered_timeout_streak =\\n\\t\\t\\t\\txpon->epon.registered_timeout_streak;')
+        capture = body.index('registered_timeout_streak =\n\t\t\t\txpon->epon.registered_timeout_streak;')
         restore = body.index('xpon->epon.registered_timeout_streak =', reset)
         self.assertLess(capture, reset,
                         'capture registered timeout history before epoch reset')
