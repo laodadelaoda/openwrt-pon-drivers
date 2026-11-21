@@ -131,6 +131,7 @@ struct en7572 {
 	bool bob_a0_valid;
 	bool bob_a2_valid;
 	bool prepared;
+	int prepared_bob_base;
 	enum airoha_pon_frontend_mode prepared_mode;
 	bool tx_gate_enabled;
 	/* Post-enable captures that show how the TX path evolves after a burst. */
@@ -174,23 +175,6 @@ static bool en7572_bob_table_valid(const u8 *table)
 	}
 
 	return has_nonzero && has_non_ff;
-}
-
-static void en7572_apply_tx_ddmi_fallback(struct device *dev, struct en7572 *en)
-{
-	u8 *a0 = en->bob + EN7572_BOB_A0_BASE;
-	const u8 *a2 = en->bob + EN7572_BOB_A2_BASE;
-	u32 a0_tssi = get_unaligned_le32(a0 + EN7572_BOB_TSSI_CAL_1);
-	u32 a2_tssi = get_unaligned_le32(a2 + EN7572_BOB_TSSI_CAL_1);
-
-	/* Keep both wavelength profiles on the same TX DDMI code when A0 is empty. */
-	if (a0_tssi != U32_MAX)
-		return;
-
-	memcpy(a0 + EN7572_BOB_TSSI_CAL_1, a2 + EN7572_BOB_TSSI_CAL_1,
-	       sizeof(a0_tssi));
-	dev_warn(dev, "BOB A0 TX DDMI is erased; copied 4 bytes from A2%s\n",
-	         a2_tssi == U32_MAX ? " (A2 source is also erased)" : "");
 }
 
 /* EN7572 reads use a big-endian 16-bit subaddress and repeated start. */
@@ -432,15 +416,9 @@ validate:
 	en->bob_a2_valid = en7572_bob_table_valid(en->bob + EN7572_BOB_A2_BASE);
 
 	if (!en->bob_a0_valid)
-		dev_warn(
-			dev,
-			"BOB A0 calibration area is empty; XE/XES will use erased/default register codes\n");
+		dev_warn(dev, "BOB A0 calibration area is invalid; automatic profile fallback will be considered\n");
 	if (!en->bob_a2_valid)
-		dev_warn(
-			dev,
-			"BOB A2 calibration area is empty; XG/XGS will use erased/default register codes\n");
-
-	en7572_apply_tx_ddmi_fallback(dev, en);
+		dev_warn(dev, "BOB A2 calibration area is invalid; automatic profile fallback will be considered\n");
 
 	dev_info(dev, "BOB %s: A0=%s A2=%s\n",
 	         loaded ? "loaded from NVMEM" : "using erased fallback",
@@ -857,24 +835,40 @@ static int en7572_start_md32(struct en7572 *en, const char *why)
 	return 0;
 }
 
-static int en7572_bob_base(enum airoha_pon_frontend_mode mode)
+static int en7572_bob_base(struct en7572 *en,
+                            enum airoha_pon_frontend_mode mode)
 {
+	int preferred;
+
 	switch (mode) {
 	case AIROHA_PON_FRONTEND_MODE_GPON:
 	case AIROHA_PON_FRONTEND_MODE_XGPON:
 	case AIROHA_PON_FRONTEND_MODE_XGSPON:
 	case AIROHA_PON_FRONTEND_MODE_EPON_1G:
-		/*
-		 * AdaptivePon(0) selects the A2 startup profile for GPON and 1G EPON.
-		 * XG/XGS and 10G EPON select their profiles explicitly.
-		 */
-		return EN7572_BOB_A2_BASE;
+		preferred = EN7572_BOB_A2_BASE;
+		break;
 	case AIROHA_PON_FRONTEND_MODE_EPON_10G_1G:
 	case AIROHA_PON_FRONTEND_MODE_EPON_10G_10G:
-		return EN7572_BOB_A0_BASE;
+		preferred = EN7572_BOB_A0_BASE;
+		break;
 	default:
 		return -EOPNOTSUPP;
 	}
+
+	/* Keep the protocol's preferred profile, but use the only valid BOB. */
+	if (preferred == EN7572_BOB_A0_BASE) {
+		if (en->bob_a0_valid)
+			return EN7572_BOB_A0_BASE;
+		if (en->bob_a2_valid)
+			return EN7572_BOB_A2_BASE;
+	} else {
+		if (en->bob_a2_valid)
+			return EN7572_BOB_A2_BASE;
+		if (en->bob_a0_valid)
+			return EN7572_BOB_A0_BASE;
+	}
+
+	return -ENODATA;
 }
 
 static const char *en7572_mode_name(enum airoha_pon_frontend_mode mode)
@@ -908,20 +902,29 @@ static int en7572_prepare(struct airoha_pon_frontend *frontend,
 	u32 tia;
 	int ret;
 
-	base = en7572_bob_base(mode);
-	if (base < 0)
+	base = en7572_bob_base(en, mode);
+	if (base < 0) {
+		dev_err(&en->program->dev,
+		        "no valid BOB calibration profile for %s; keeping TX disabled\n",
+		        en7572_mode_name(mode));
 		return base;
+	}
 
-	/*
-	 * AdaptivePon() truncates erased bytes to each register's field width.
-	 * PON MAC retains control of burst timing with these default codes.
-	 */
 	if ((base == EN7572_BOB_A0_BASE && !en->bob_a0_valid) ||
 	    (base == EN7572_BOB_A2_BASE && !en->bob_a2_valid))
-		dev_warn(
-			&en->program->dev,
-			"preparing %s with an empty BOB table using stock-compatible register codes\n",
-			en7572_mode_name(mode));
+		return -EINVAL;
+
+	dev_info(&en->program->dev, "using BOB A%d calibration for %s%s\n",
+	         base == EN7572_BOB_A0_BASE ? 0 : 2,
+	         en7572_mode_name(mode),
+	         ((mode == AIROHA_PON_FRONTEND_MODE_EPON_10G_1G ||
+	           mode == AIROHA_PON_FRONTEND_MODE_EPON_10G_10G) &&
+	          base == EN7572_BOB_A2_BASE) ||
+	         ((mode == AIROHA_PON_FRONTEND_MODE_GPON ||
+	           mode == AIROHA_PON_FRONTEND_MODE_XGPON ||
+	           mode == AIROHA_PON_FRONTEND_MODE_XGSPON ||
+	           mode == AIROHA_PON_FRONTEND_MODE_EPON_1G) &&
+	          base == EN7572_BOB_A0_BASE) ? " (fallback)" : "");
 
 	mutex_lock(&en->lock);
 	en->prepared = false;
@@ -1007,6 +1010,7 @@ static int en7572_prepare(struct airoha_pon_frontend *frontend,
 		ret = en7572_update_bits(en, EN7572_LOOP_CTRL, BIT(0), BIT(0));
 	if (!ret) {
 		en->prepared_mode = mode;
+		en->prepared_bob_base = base;
 		en->prepared = true;
 	}
 
@@ -1074,11 +1078,9 @@ en7572_get_diagnostics(struct airoha_pon_frontend *frontend,
 		                     AIROHA_PON_FRONTEND_DIAG_TX_POWER |
 		                     AIROHA_PON_FRONTEND_DIAG_RX_POWER;
 		diagnostics->tx_gate_enabled = en->tx_gate_enabled;
-		bob_base = en->prepared ? en7572_bob_base(en->prepared_mode) :
-		                          -EINVAL;
+		bob_base = en->prepared ? en->prepared_bob_base : -EINVAL;
 		if ((bob_base == EN7572_BOB_A0_BASE && en->bob_a0_valid) ||
-		    (bob_base == EN7572_BOB_A2_BASE && en->bob_a2_valid) ||
-		    (bob_base < 0 && en->bob_a0_valid && en->bob_a2_valid))
+		    (bob_base == EN7572_BOB_A2_BASE && en->bob_a2_valid))
 			diagnostics->calibration =
 				AIROHA_PON_FRONTEND_CALIBRATION_READY;
 		else if (bob_base >= 0 ||
