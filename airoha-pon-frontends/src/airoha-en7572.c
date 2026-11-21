@@ -131,7 +131,7 @@ struct en7572 {
 	bool bob_a0_valid;
 	bool bob_a2_valid;
 	bool prepared;
-	int prepared_bob_base;
+	int selected_bob_base;
 	bool tx_gate_enabled;
 	/* Post-enable captures that show how the TX path evolves after a burst. */
 	struct delayed_work sample_work;
@@ -905,6 +905,7 @@ static int en7572_prepare(struct airoha_pon_frontend *frontend,
 
 	mutex_lock(&en->lock);
 	en->prepared = false;
+	en->selected_bob_base = -EINVAL;
 	en->tx_gate_enabled = false;
 	WRITE_ONCE(en->tx_ready_state, false);
 	cancel_delayed_work(&en->ready_work);
@@ -926,53 +927,54 @@ static int en7572_prepare(struct airoha_pon_frontend *frontend,
 		goto out_unlock;
 	}
 
+	en->selected_bob_base = base;
 	dev_info(&en->program->dev, "using BOB A%d calibration for %s\n",
-	         base == EN7572_BOB_A0_BASE ? 0 : 2,
+	         en->selected_bob_base == EN7572_BOB_A0_BASE ? 0 : 2,
 	         en7572_mode_name(mode));
 
 	ret = en7572_update_bits(
 		en, EN7572_DCL_CTRL_2, GENMASK(27, 16),
 		FIELD_PREP(GENMASK(27, 16),
-	                   en7572_bob_u16(en, base, EN7572_BOB_IMOD_CAL)));
+	                   en7572_bob_u16(en, en->selected_bob_base, EN7572_BOB_IMOD_CAL)));
 	if (ret)
 		goto out_unlock;
 
 	ret = en7572_update_bits(
 		en, EN7572_DCL_CTRL_2, GENMASK(12, 0),
 		FIELD_PREP(GENMASK(12, 0),
-	                   en7572_bob_u16(en, base, EN7572_BOB_IAV_CAL)));
+	                   en7572_bob_u16(en, en->selected_bob_base, EN7572_BOB_IAV_CAL)));
 	if (ret)
 		goto out_unlock;
 
 	ret = en7572_update_bits(
 		en, EN7572_APC_ANA_VMON_SEL, GENMASK(15, 8),
 		FIELD_PREP(GENMASK(15, 8),
-	                   en7572_bob_u8(en, base, EN7572_BOB_APC_CAL)));
+	                   en7572_bob_u8(en, en->selected_bob_base, EN7572_BOB_APC_CAL)));
 	if (ret)
 		goto out_unlock;
 
 	ret = en7572_update_bits(
 		en, EN7572_RESERVE_TIA, BIT(0),
-		en7572_bob_u8(en, base, EN7572_BOB_TIA_CUR) ? BIT(0) : 0);
+		en7572_bob_u8(en, en->selected_bob_base, EN7572_BOB_TIA_CUR) ? BIT(0) : 0);
 	if (ret)
 		goto out_unlock;
 
 	ret = en7572_update_bits(
 		en, EN7572_IMPD_SINK, GENMASK(15, 8),
 		FIELD_PREP(GENMASK(15, 8),
-	                   en7572_bob_u8(en, base, EN7572_BOB_ERC_CDAC)));
+	                   en7572_bob_u8(en, en->selected_bob_base, EN7572_BOB_ERC_CDAC)));
 	if (ret)
 		goto out_unlock;
 
 	ret = en7572_update_bits(
 		en, EN7572_IMPD_SINK, GENMASK(27, 16),
 		FIELD_PREP(GENMASK(27, 16),
-	                   en7572_bob_u16(en, base, EN7572_BOB_ERC_DAC)));
+	                   en7572_bob_u16(en, en->selected_bob_base, EN7572_BOB_ERC_DAC)));
 	if (ret)
 		goto out_unlock;
 
-	tia = (en7572_bob_u8(en, base, EN7572_BOB_TIA_BW) << 3) |
-	      en7572_bob_u8(en, base, EN7572_BOB_TIA_GAIN);
+	tia = (en7572_bob_u8(en, en->selected_bob_base, EN7572_BOB_TIA_BW) << 3) |
+	      en7572_bob_u8(en, en->selected_bob_base, EN7572_BOB_TIA_GAIN);
 	ret = en7572_update_bits(en, EN7572_RESERVE_TIA, GENMASK(13, 8),
 	                         FIELD_PREP(GENMASK(13, 8), tia));
 	if (ret)
@@ -981,19 +983,19 @@ static int en7572_prepare(struct airoha_pon_frontend *frontend,
 	ret = en7572_update_bits(
 		en, EN7572_REP_PH_CAP_SEL, GENMASK(18, 16),
 		FIELD_PREP(GENMASK(18, 16),
-	                   en7572_bob_u8(en, base, EN7572_BOB_PGA_GAIN)));
+	                   en7572_bob_u8(en, en->selected_bob_base, EN7572_BOB_PGA_GAIN)));
 	if (ret)
 		goto out_unlock;
 
 	ret = en7572_update_bits(
 		en, EN7572_REP_PH_CAP_SEL, GENMASK(6, 5),
 		FIELD_PREP(GENMASK(6, 5),
-	                   en7572_bob_u8(en, base, EN7572_BOB_PGA_CAP)));
+	                   en7572_bob_u8(en, en->selected_bob_base, EN7572_BOB_PGA_CAP)));
 	if (ret)
 		goto out_unlock;
 
 	ret = en7572_write(en->runtime, EN7572_BOB_TSSI_CAL_1,
-	                   en->bob + base + EN7572_BOB_TSSI_CAL_1, sizeof(u32));
+	                   en->bob + en->selected_bob_base + EN7572_BOB_TSSI_CAL_1, sizeof(u32));
 	if (ret)
 		goto out_unlock;
 
@@ -1002,7 +1004,6 @@ static int en7572_prepare(struct airoha_pon_frontend *frontend,
 	if (!ret)
 		ret = en7572_update_bits(en, EN7572_LOOP_CTRL, BIT(0), BIT(0));
 	if (!ret) {
-		en->prepared_bob_base = base;
 		en->prepared = true;
 	}
 
@@ -1070,7 +1071,7 @@ en7572_get_diagnostics(struct airoha_pon_frontend *frontend,
 		                     AIROHA_PON_FRONTEND_DIAG_TX_POWER |
 		                     AIROHA_PON_FRONTEND_DIAG_RX_POWER;
 		diagnostics->tx_gate_enabled = en->tx_gate_enabled;
-		bob_base = en->prepared ? en->prepared_bob_base : -EINVAL;
+		bob_base = en->prepared ? en->selected_bob_base : -EINVAL;
 		if ((bob_base == EN7572_BOB_A0_BASE && en->bob_a0_valid) ||
 		    (bob_base == EN7572_BOB_A2_BASE && en->bob_a2_valid))
 			diagnostics->calibration =
