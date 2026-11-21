@@ -875,17 +875,17 @@ static const char *en7572_mode_name(enum airoha_pon_frontend_mode mode)
 {
 	switch (mode) {
 	case AIROHA_PON_FRONTEND_MODE_GPON:
-		return "gpon-a2";
+		return "gpon";
 	case AIROHA_PON_FRONTEND_MODE_XGPON:
-		return "xgpon-a2";
+		return "xgpon";
 	case AIROHA_PON_FRONTEND_MODE_XGSPON:
-		return "xgspon-a2";
+		return "xgspon";
 	case AIROHA_PON_FRONTEND_MODE_EPON_1G:
-		return "epon-1g-a2";
+		return "epon-1g";
 	case AIROHA_PON_FRONTEND_MODE_EPON_10G_1G:
-		return "epon-10g-1g-a0";
+		return "epon-10g-1g";
 	case AIROHA_PON_FRONTEND_MODE_EPON_10G_10G:
-		return "epon-10g-10g-a0";
+		return "epon-10g-10g";
 	default:
 		return "unsupported";
 	}
@@ -902,17 +902,28 @@ static int en7572_prepare(struct airoha_pon_frontend *frontend,
 	u32 tia;
 	int ret;
 
+	mutex_lock(&en->lock);
+	en->prepared = false;
+	en->tx_gate_enabled = false;
+	WRITE_ONCE(en->tx_ready_state, false);
+	cancel_delayed_work(&en->ready_work);
+	if (en->tx_disable)
+		gpiod_set_value_cansleep(en->tx_disable, 1);
+
+	/* Close both TX gates before selecting or programming a calibration. */
+	ret = en7572_update_bits(en, EN7572_BEN_CTRL, EN7572_BEN_MODE_MASK,
+	                         EN7572_BEN_MODE_OFF);
+	if (ret)
+		goto out_unlock;
+
 	base = en7572_bob_base(en, mode);
 	if (base < 0) {
 		dev_err(&en->program->dev,
 		        "no valid BOB calibration profile for %s; keeping TX disabled\n",
 		        en7572_mode_name(mode));
-		return base;
+		ret = base;
+		goto out_unlock;
 	}
-
-	if ((base == EN7572_BOB_A0_BASE && !en->bob_a0_valid) ||
-	    (base == EN7572_BOB_A2_BASE && !en->bob_a2_valid))
-		return -EINVAL;
 
 	dev_info(&en->program->dev, "using BOB A%d calibration for %s%s\n",
 	         base == EN7572_BOB_A0_BASE ? 0 : 2,
@@ -925,17 +936,6 @@ static int en7572_prepare(struct airoha_pon_frontend *frontend,
 	           mode == AIROHA_PON_FRONTEND_MODE_XGSPON ||
 	           mode == AIROHA_PON_FRONTEND_MODE_EPON_1G) &&
 	          base == EN7572_BOB_A0_BASE) ? " (fallback)" : "");
-
-	mutex_lock(&en->lock);
-	en->prepared = false;
-	en->tx_gate_enabled = false;
-	WRITE_ONCE(en->tx_ready_state, false);
-	cancel_delayed_work(&en->ready_work);
-
-	ret = en7572_update_bits(en, EN7572_BEN_CTRL, EN7572_BEN_MODE_MASK,
-	                         EN7572_BEN_MODE_OFF);
-	if (ret)
-		goto out_unlock;
 
 	ret = en7572_update_bits(
 		en, EN7572_DCL_CTRL_2, GENMASK(27, 16),
