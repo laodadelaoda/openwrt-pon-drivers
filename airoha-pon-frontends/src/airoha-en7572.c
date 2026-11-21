@@ -423,8 +423,8 @@ validate:
 
 	dev_info(dev, "BOB %s: A0=%s A2=%s\n",
 	         loaded ? "loaded from NVMEM" : "using erased fallback",
-	         en->bob_a0_valid ? "valid" : "empty",
-	         en->bob_a2_valid ? "valid" : "empty");
+	         en->bob_a0_valid ? "valid" : "invalid",
+	         en->bob_a2_valid ? "valid" : "invalid");
 
 	return 0;
 }
