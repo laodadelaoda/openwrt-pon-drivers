@@ -132,7 +132,6 @@ struct en7572 {
 	bool bob_a2_valid;
 	bool prepared;
 	int prepared_bob_base;
-	enum airoha_pon_frontend_mode prepared_mode;
 	bool tx_gate_enabled;
 	/* Post-enable captures that show how the TX path evolves after a burst. */
 	struct delayed_work sample_work;
@@ -416,9 +415,11 @@ validate:
 	en->bob_a2_valid = en7572_bob_table_valid(en->bob + EN7572_BOB_A2_BASE);
 
 	if (!en->bob_a0_valid)
-		dev_warn(dev, "BOB A0 calibration area is invalid; automatic profile fallback will be considered\n");
+		dev_warn(dev,
+		         "BOB A0 calibration area is invalid; checking A2 fallback\n");
 	if (!en->bob_a2_valid)
-		dev_warn(dev, "BOB A2 calibration area is invalid; automatic profile fallback will be considered\n");
+		dev_warn(dev,
+		         "BOB A2 calibration area is invalid; checking A0 fallback\n");
 
 	dev_info(dev, "BOB %s: A0=%s A2=%s\n",
 	         loaded ? "loaded from NVMEM" : "using erased fallback",
@@ -925,17 +926,9 @@ static int en7572_prepare(struct airoha_pon_frontend *frontend,
 		goto out_unlock;
 	}
 
-	dev_info(&en->program->dev, "using BOB A%d calibration for %s%s\n",
+	dev_info(&en->program->dev, "using BOB A%d calibration for %s\n",
 	         base == EN7572_BOB_A0_BASE ? 0 : 2,
-	         en7572_mode_name(mode),
-	         ((mode == AIROHA_PON_FRONTEND_MODE_EPON_10G_1G ||
-	           mode == AIROHA_PON_FRONTEND_MODE_EPON_10G_10G) &&
-	          base == EN7572_BOB_A2_BASE) ||
-	         ((mode == AIROHA_PON_FRONTEND_MODE_GPON ||
-	           mode == AIROHA_PON_FRONTEND_MODE_XGPON ||
-	           mode == AIROHA_PON_FRONTEND_MODE_XGSPON ||
-	           mode == AIROHA_PON_FRONTEND_MODE_EPON_1G) &&
-	          base == EN7572_BOB_A0_BASE) ? " (fallback)" : "");
+	         en7572_mode_name(mode));
 
 	ret = en7572_update_bits(
 		en, EN7572_DCL_CTRL_2, GENMASK(27, 16),
@@ -1009,7 +1002,6 @@ static int en7572_prepare(struct airoha_pon_frontend *frontend,
 	if (!ret)
 		ret = en7572_update_bits(en, EN7572_LOOP_CTRL, BIT(0), BIT(0));
 	if (!ret) {
-		en->prepared_mode = mode;
 		en->prepared_bob_base = base;
 		en->prepared = true;
 	}
